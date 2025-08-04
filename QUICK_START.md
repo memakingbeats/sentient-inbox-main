@@ -5,7 +5,7 @@
 ### 1. Pré-requisitos
 
 -   Docker e Docker Compose instalados
--   Chave da API OpenAI
+-   Chave da API Google Gemini (já configurada)
 -   Conta Google com Gmail
 
 ### 2. Configuração Rápida
@@ -24,7 +24,7 @@ cd sentient-inbox-main
 Edite o arquivo `.env` criado:
 
 ```env
-OPENAI_API_KEY=sua_chave_openai_aqui
+GEMINI_API_KEY=AIzaSyA9kPO-NCce1wpTTVQPTeZB3rF_zxDg_Wk
 SECRET_KEY=chave_secreta_aleatoria_aqui
 ```
 

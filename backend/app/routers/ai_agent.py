@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Header
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
-from app.routers.auth import verify_token
-from app.services.gmail_service import GmailService
+import jwt
+from app.core.config import settings
+from app.core.database import load_emails
 from app.services.ai_service import AIService
 
 router = APIRouter()
@@ -24,16 +25,28 @@ class EmailInsights(BaseModel):
     padroes_comunicacao: str
     sugestoes_organizacao: List[str]
 
-gmail_service = GmailService()
-ai_service = AIService()
+def get_token(authorization: Optional[str] = Header(None)) -> str:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token de autorização inválido")
+    return authorization.replace("Bearer ", "")
+
+def decode_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expirado")
+    except jwt.JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido")
 
 @router.post("/chat", response_model=AIResponse)
 async def chat_with_ai(
     ai_query: AIQuery,
-    token_data: Dict[str, Any] = Depends(verify_token)
+    token: str = Depends(get_token)
 ):
     """Chat com o agente de IA sobre emails"""
     try:
+        ai_service = AIService()
         # Buscar emails relevantes usando busca semântica
         relevant_emails = ai_service.search_emails(ai_query.query, k=5)
         
@@ -66,19 +79,12 @@ async def chat_with_ai(
 @router.get("/insights", response_model=EmailInsights)
 async def get_email_insights(
     max_emails: int = Query(50, ge=10, le=200),
-    token_data: Dict[str, Any] = Depends(verify_token)
+    token: str = Depends(get_token)
 ):
     """Obtém insights gerais sobre os emails"""
     try:
-        credentials = gmail_service.get_credentials_from_token({
-            'access_token': token_data.get('access_token'),
-            'refresh_token': token_data.get('refresh_token'),
-            'client_id': token_data.get('client_id'),
-            'client_secret': token_data.get('client_secret')
-        })
-        
-        # Buscar emails para análise
-        emails = gmail_service.get_emails(credentials, max_results=max_emails)
+        ai_service = AIService()
+        emails = load_emails()
         
         if not emails:
             return EmailInsights(
@@ -104,29 +110,20 @@ async def get_email_insights(
 @router.post("/analyze-batch")
 async def analyze_emails_batch(
     email_ids: List[str],
-    token_data: Dict[str, Any] = Depends(verify_token)
+    token: str = Depends(get_token)
 ):
     """Analisa múltiplos emails em lote"""
     try:
-        credentials = gmail_service.get_credentials_from_token({
-            'access_token': token_data.get('access_token'),
-            'refresh_token': token_data.get('refresh_token'),
-            'client_id': token_data.get('client_id'),
-            'client_secret': token_data.get('client_secret')
-        })
-        
-        service = gmail_service.build_service(credentials)
+        ai_service = AIService()
+        emails = load_emails()
         analyses = []
         
         for email_id in email_ids[:10]:  # Limitar a 10 emails por vez
             try:
-                message = service.users().messages().get(
-                    userId='me',
-                    id=email_id,
-                    format='full'
-                ).execute()
-                
-                email_data = gmail_service._parse_email_message(message)
+                email_data = next((e for e in emails if e.get('id') == email_id), None)
+                if not email_data:
+                    print(f"Email {email_id} não encontrado.")
+                    continue
                 
                 # Preparar conteúdo para análise
                 content = f"""
@@ -163,10 +160,11 @@ async def advanced_email_search(
     sentiment: Optional[str] = Query(None, description="Sentimento (positivo, negativo, neutro)"),
     urgency: Optional[str] = Query(None, description="Urgência (alta, média, baixa)"),
     k: int = Query(10, ge=1, le=50),
-    token_data: Dict[str, Any] = Depends(verify_token)
+    token: str = Depends(get_token)
 ):
     """Busca avançada de emails com filtros"""
     try:
+        ai_service = AIService()
         # Busca semântica inicial
         results = ai_service.search_emails(query, k=k*2)  # Buscar mais para filtrar depois
         
@@ -211,26 +209,16 @@ async def advanced_email_search(
 async def generate_email_response(
     email_id: str,
     context: Optional[str] = "",
-    token_data: Dict[str, Any] = Depends(verify_token)
+    token: str = Depends(get_token)
 ):
     """Gera resposta para um email específico"""
     try:
-        credentials = gmail_service.get_credentials_from_token({
-            'access_token': token_data.get('access_token'),
-            'refresh_token': token_data.get('refresh_token'),
-            'client_id': token_data.get('client_id'),
-            'client_secret': token_data.get('client_secret')
-        })
+        ai_service = AIService()
+        emails = load_emails()
+        email_data = next((e for e in emails if e.get('id') == email_id), None)
         
-        # Buscar email
-        service = gmail_service.build_service(credentials)
-        message = service.users().messages().get(
-            userId='me',
-            id=email_id,
-            format='full'
-        ).execute()
-        
-        email_data = gmail_service._parse_email_message(message)
+        if not email_data:
+            raise HTTPException(status_code=404, detail=f"Email com ID {email_id} não encontrado.")
         
         # Preparar conteúdo do email
         email_content = f"""
@@ -258,19 +246,12 @@ async def generate_email_response(
 
 @router.get("/recommendations")
 async def get_email_recommendations(
-    token_data: Dict[str, Any] = Depends(verify_token)
+    token: str = Depends(get_token)
 ):
     """Obtém recomendações baseadas nos emails"""
     try:
-        credentials = gmail_service.get_credentials_from_token({
-            'access_token': token_data.get('access_token'),
-            'refresh_token': token_data.get('refresh_token'),
-            'client_id': token_data.get('client_id'),
-            'client_secret': token_data.get('client_secret')
-        })
-        
-        # Buscar emails recentes
-        emails = gmail_service.get_emails(credentials, max_results=50)
+        ai_service = AIService()
+        emails = load_emails()
         
         if not emails:
             return {"recommendations": []}

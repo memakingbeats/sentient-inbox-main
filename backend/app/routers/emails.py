@@ -1,228 +1,100 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Header
 from fastapi.security import HTTPBearer
-from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
-from app.routers.auth import verify_token
+from typing import List, Optional
+import jwt
+from datetime import datetime, timedelta
+import json
+
 from app.services.gmail_service import GmailService
 from app.services.ai_service import AIService
+from app.core.config import settings
+from app.core.database import save_emails, load_emails
 
 router = APIRouter()
 security = HTTPBearer()
 
-class EmailResponse(BaseModel):
-    id: str
-    threadId: str
-    subject: str
-    sender: str
-    date: str
-    body: str
-    labels: List[str]
-    snippet: str
-    isRead: bool
-    isImportant: bool
-    hasAttachments: bool
+# Função para obter token do header
+def get_token(authorization: Optional[str] = Header(None)) -> str:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token de autorização inválido")
+    return authorization.replace("Bearer ", "")
 
-class EmailAnalysis(BaseModel):
-    resumo: str
-    sentimento: str
-    urgencia: str
-    categoria: str
-    acoes_recomendadas: List[str]
-
-gmail_service = GmailService()
-ai_service = AIService()
-
-@router.get("/", response_model=List[EmailResponse])
-async def get_emails(
-    max_results: int = Query(50, ge=1, le=100),
-    token_data: Dict[str, Any] = Depends(verify_token)
-):
-    """Busca emails da caixa de entrada"""
+# Função para decodificar token
+def decode_token(token: str) -> dict:
     try:
-        credentials = gmail_service.get_credentials_from_token({
-            'access_token': token_data.get('access_token'),
-            'refresh_token': token_data.get('refresh_token'),
-            'client_id': token_data.get('client_id'),
-            'client_secret': token_data.get('client_secret')
-        })
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expirado")
+    except jwt.JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+@router.get("/")
+async def get_emails(token: str = Depends(get_token)):
+    """Busca emails do Gmail"""
+    try:
+        # Decodificar token
+        payload = decode_token(token)
+        access_token = payload.get("access_token")
         
-        emails = gmail_service.get_emails(credentials, max_results=max_results)
+        if not access_token:
+            raise HTTPException(status_code=401, detail="Token de acesso não encontrado")
         
-        # Adicionar emails ao vector store para RAG
-        if emails:
-            ai_service.add_emails_to_vectorstore(emails)
+        # Inicializar serviço Gmail
+        gmail_service = GmailService()
+        emails = await gmail_service.get_emails(access_token)
+        
+        # Salvar emails localmente
+        save_emails(emails)
         
         return emails
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao buscar emails: {str(e)}")
 
-@router.get("/{email_id}", response_model=EmailResponse)
-async def get_email(
-    email_id: str,
-    token_data: Dict[str, Any] = Depends(verify_token)
-):
-    """Busca email específico"""
-    try:
-        credentials = gmail_service.get_credentials_from_token({
-            'access_token': token_data.get('access_token'),
-            'refresh_token': token_data.get('refresh_token'),
-            'client_id': token_data.get('client_id'),
-            'client_secret': token_data.get('client_secret')
-        })
-        
-        # Buscar email específico
-        service = gmail_service.build_service(credentials)
-        message = service.users().messages().get(
-            userId='me',
-            id=email_id,
-            format='full'
-        ).execute()
-        
-        email_data = gmail_service._parse_email_message(message)
-        return email_data
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao buscar email: {str(e)}")
-
 @router.post("/{email_id}/read")
-async def mark_email_as_read(
-    email_id: str,
-    token_data: Dict[str, Any] = Depends(verify_token)
-):
+async def mark_as_read(email_id: str, token: str = Depends(get_token)):
     """Marca email como lido"""
     try:
-        credentials = gmail_service.get_credentials_from_token({
-            'access_token': token_data.get('access_token'),
-            'refresh_token': token_data.get('refresh_token'),
-            'client_id': token_data.get('client_id'),
-            'client_secret': token_data.get('client_secret')
-        })
+        payload = decode_token(token)
+        access_token = payload.get("access_token")
         
-        success = gmail_service.mark_as_read(credentials, email_id)
+        if not access_token:
+            raise HTTPException(status_code=401, detail="Token de acesso não encontrado")
         
-        if success:
-            return {"message": "Email marcado como lido"}
-        else:
-            raise HTTPException(status_code=500, detail="Erro ao marcar email como lido")
-            
+        gmail_service = GmailService()
+        await gmail_service.mark_as_read(access_token, email_id)
+        
+        return {"message": "Email marcado como lido"}
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao marcar email como lido: {str(e)}")
 
-@router.get("/{email_id}/analysis", response_model=EmailAnalysis)
-async def analyze_email(
-    email_id: str,
-    token_data: Dict[str, Any] = Depends(verify_token)
-):
+@router.get("/{email_id}/analysis")
+async def analyze_email(email_id: str, token: str = Depends(get_token)):
     """Analisa email com IA"""
     try:
-        credentials = gmail_service.get_credentials_from_token({
-            'access_token': token_data.get('access_token'),
-            'refresh_token': token_data.get('refresh_token'),
-            'client_id': token_data.get('client_id'),
-            'client_secret': token_data.get('client_secret')
-        })
+        payload = decode_token(token)
+        access_token = payload.get("access_token")
         
-        # Buscar email
-        service = gmail_service.build_service(credentials)
-        message = service.users().messages().get(
-            userId='me',
-            id=email_id,
-            format='full'
-        ).execute()
+        if not access_token:
+            raise HTTPException(status_code=401, detail="Token de acesso não encontrado")
         
-        email_data = gmail_service._parse_email_message(message)
+        # Buscar email específico
+        gmail_service = GmailService()
+        email = await gmail_service.get_email(access_token, email_id)
         
-        # Preparar conteúdo para análise
-        content = f"""
-        Assunto: {email_data['subject']}
-        Remetente: {email_data['sender']}
-        Data: {email_data['date']}
-        Conteúdo: {email_data['body']}
-        """
+        if not email:
+            raise HTTPException(status_code=404, detail="Email não encontrado")
         
-        # Analisar com IA
+        # Inicializar serviço de IA
+        ai_service = AIService()
+        
+        # Analisar conteúdo do email
+        content = f"Assunto: {email.get('subject', '')}\n\n{email.get('body', '')}"
         analysis = ai_service.analyze_email_content(content)
+        
         return analysis
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro na análise: {str(e)}")
-
-@router.get("/thread/{thread_id}", response_model=List[EmailResponse])
-async def get_email_thread(
-    thread_id: str,
-    token_data: Dict[str, Any] = Depends(verify_token)
-):
-    """Busca thread completa de emails"""
-    try:
-        credentials = gmail_service.get_credentials_from_token({
-            'access_token': token_data.get('access_token'),
-            'refresh_token': token_data.get('refresh_token'),
-            'client_id': token_data.get('client_id'),
-            'client_secret': token_data.get('client_secret')
-        })
-        
-        emails = gmail_service.get_email_thread(credentials, thread_id)
-        return emails
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao buscar thread: {str(e)}")
-
-@router.get("/search/semantic")
-async def search_emails_semantic(
-    query: str = Query(..., description="Query para busca semântica"),
-    k: int = Query(5, ge=1, le=20, description="Número de resultados"),
-    token_data: Dict[str, Any] = Depends(verify_token)
-):
-    """Busca emails usando busca semântica"""
-    try:
-        results = ai_service.search_emails(query, k=k)
-        return {
-            "query": query,
-            "results": results,
-            "total": len(results)
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro na busca semântica: {str(e)}")
-
-@router.get("/stats/overview")
-async def get_email_stats(
-    token_data: Dict[str, Any] = Depends(verify_token)
-):
-    """Obtém estatísticas dos emails"""
-    try:
-        credentials = gmail_service.get_credentials_from_token({
-            'access_token': token_data.get('access_token'),
-            'refresh_token': token_data.get('refresh_token'),
-            'client_id': token_data.get('client_id'),
-            'client_secret': token_data.get('client_secret')
-        })
-        
-        # Buscar emails para análise
-        emails = gmail_service.get_emails(credentials, max_results=100)
-        
-        # Calcular estatísticas
-        total_emails = len(emails)
-        unread_emails = len([e for e in emails if not e['isRead']])
-        important_emails = len([e for e in emails if e['isImportant']])
-        emails_with_attachments = len([e for e in emails if e['hasAttachments']])
-        
-        # Análise de remetentes
-        senders = {}
-        for email in emails:
-            sender = email['sender']
-            senders[sender] = senders.get(sender, 0) + 1
-        
-        top_senders = sorted(senders.items(), key=lambda x: x[1], reverse=True)[:5]
-        
-        return {
-            "total_emails": total_emails,
-            "unread_emails": unread_emails,
-            "important_emails": important_emails,
-            "emails_with_attachments": emails_with_attachments,
-            "top_senders": [{"sender": sender, "count": count} for sender, count in top_senders]
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao obter estatísticas: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Erro na análise: {str(e)}") 

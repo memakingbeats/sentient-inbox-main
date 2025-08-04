@@ -8,7 +8,6 @@ import os
 
 from app.routers import auth, emails, ai_agent
 from app.core.config import settings
-from app.core.database import init_chromadb
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -17,15 +16,14 @@ load_dotenv()
 async def lifespan(app: FastAPI):
     # Startup
     print("🚀 Iniciando Gmail AI Agent...")
-    await init_chromadb()
-    print("✅ ChromaDB inicializado")
+    print("✅ Aplicação inicializada")
     yield
     # Shutdown
     print("🛑 Encerrando aplicação...")
 
 app = FastAPI(
     title="Gmail AI Agent",
-    description="Backend para análise inteligente de emails com LangChain e ChromaDB",
+    description="Backend para análise inteligente de emails com LangChain e Gemini",
     version="1.0.0",
     lifespan=lifespan
 )

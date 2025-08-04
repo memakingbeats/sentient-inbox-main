@@ -3,8 +3,8 @@ from typing import List
 import os
 
 class Settings(BaseSettings):
-    # OpenAI
-    OPENAI_API_KEY: str = ""
+    # Google Gemini AI
+    GEMINI_API_KEY: str = ""
     
     # Google OAuth
     GOOGLE_CLIENT_ID: str = ""

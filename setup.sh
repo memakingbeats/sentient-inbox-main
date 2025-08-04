@@ -20,8 +20,8 @@ echo "✅ Docker e Docker Compose encontrados"
 if [ ! -f .env ]; then
     echo "📝 Criando arquivo .env..."
     cat > .env << EOF
-# OpenAI API Key
-OPENAI_API_KEY=your_openai_api_key_here
+# Google Gemini AI API Key
+GEMINI_API_KEY=AIzaSyA9kPO-NCce1wpTTVQPTeZB3rF_zxDg_Wk
 
 # Google OAuth Credentials
 GOOGLE_CLIENT_ID=349138754128-rug3moio7qlfq09cukl5hiie9rjr0ru9.apps.googleusercontent.com
@@ -35,10 +35,10 @@ CHROMADB_HOST=localhost
 CHROMADB_PORT=8001
 EOF
     echo "✅ Arquivo .env criado"
-    echo "⚠️  IMPORTANTE: Edite o arquivo .env com suas credenciais antes de continuar!"
-    echo "   - Adicione sua OPENAI_API_KEY"
+    echo "⚠️  IMPORTANTE: Edite o arquivo .env se necessário!"
+    echo "   - A chave do Gemini já está configurada"
     echo "   - Altere SECRET_KEY para uma chave segura"
-    read -p "Pressione Enter após editar o arquivo .env..."
+    read -p "Pressione Enter para continuar..."
 fi
 
 # Criar diretórios necessários
@@ -54,12 +54,6 @@ else
 fi
 
 # Verificar se as variáveis de ambiente estão configuradas
-if grep -q "your_openai_api_key_here" .env; then
-    echo "❌ OPENAI_API_KEY não foi configurada no arquivo .env"
-    echo "   Por favor, adicione sua chave da API OpenAI"
-    exit 1
-fi
-
 if grep -q "your_secret_key_here" .env; then
     echo "❌ SECRET_KEY não foi configurada no arquivo .env"
     echo "   Por favor, adicione uma chave secreta segura"

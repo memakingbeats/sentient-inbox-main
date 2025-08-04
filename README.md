@@ -1,6 +1,6 @@
 # Gmail AI Agent
 
-Sistema completo de análise inteligente de emails usando Gmail API, LangChain, ChromaDB e Docker.
+Sistema completo de análise inteligente de emails usando Gmail API, LangChain, ChromaDB e Google Gemini 2.0 Flash.
 
 ## 🚀 Funcionalidades
 
@@ -28,7 +28,7 @@ Sistema completo de análise inteligente de emails usando Gmail API, LangChain, 
 -   LangChain
 -   ChromaDB (Vector Database)
 -   Google Gmail API
--   OpenAI GPT-3.5-turbo
+-   Google Gemini 2.0 Flash
 -   Docker
 
 ## 📋 Pré-requisitos
@@ -37,7 +37,7 @@ Sistema completo de análise inteligente de emails usando Gmail API, LangChain, 
 -   Python 3.11+
 -   Docker e Docker Compose
 -   Conta Google com Gmail API habilitada
--   Chave da API OpenAI
+-   Chave da API Google Gemini
 
 ## 🔧 Configuração
 
@@ -67,7 +67,7 @@ cd backend
 cp env.example .env
 
 # Editar .env com suas credenciais
-OPENAI_API_KEY=sua_chave_openai_aqui
+GEMINI_API_KEY=AIzaSyA9kPO-NCce1wpTTVQPTeZB3rF_zxDg_Wk
 GOOGLE_CLIENT_ID=349138754128-rug3moio7qlfq09cukl5hiie9rjr0ru9.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=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
 SECRET_KEY=sua_chave_secreta_aqui
@@ -177,7 +177,7 @@ VITE_GOOGLE_CLIENT_ID=349138754128-rug3moio7qlfq09cukl5hiie9rjr0ru9.apps.googleu
 #### Backend (.env)
 
 ```env
-OPENAI_API_KEY=sua_chave_openai
+GEMINI_API_KEY=AIzaSyA9kPO-NCce1wpTTVQPTeZB3rF_zxDg_Wk
 GOOGLE_CLIENT_ID=349138754128-rug3moio7qlfq09cukl5hiie9rjr0ru9.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=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
 SECRET_KEY=sua_chave_secreta
@@ -191,7 +191,7 @@ CHROMADB_PORT=8001
 
 Edite `backend/app/services/ai_service.py` para alterar:
 
--   Modelo OpenAI (gpt-3.5-turbo, gpt-4)
+-   Modelo Gemini (gemini-2.0-flash-exp, gemini-1.5-pro)
 -   Embeddings (sentence-transformers)
 -   Prompts personalizados
 
@@ -222,9 +222,10 @@ Modifique `src/components/` para:
     - Verifique se o container está rodando: `docker ps`
     - Reinicie: `docker-compose restart chromadb`
 
-4. **Erro OpenAI**
+4. **Erro Gemini**
+
     - Verifique se a API key está correta
-    - Confirme se tem créditos disponíveis
+    - Confirme se tem créditos disponíveis na Google AI Studio
 
 ### Logs
 
@@ -280,4 +281,4 @@ Para dúvidas ou problemas:
 
 ---
 
-**Desenvolvido com ❤️ usando React, FastAPI, LangChain e ChromaDB**
+**Desenvolvido com ❤️ usando React, FastAPI, LangChain, ChromaDB e Google Gemini 2.0 Flash**
