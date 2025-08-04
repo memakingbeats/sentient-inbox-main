@@ -5,18 +5,44 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import base64
 import email
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import json
 import os
 from datetime import datetime, timedelta
+import httpx
 
 class GmailService:
+    
     def __init__(self):
         self.SCOPES = [
             'https://www.googleapis.com/auth/gmail.readonly',
             'https://www.googleapis.com/auth/gmail.modify'
         ]
         self.credentials_path = "credentials/google_credentials.json"
+        
+    async def exchange_code_for_tokens(self, code: str, redirect_uri: str) -> Dict[str, Any]:
+        """
+        Troca um código de autorização do Google OAuth por tokens de acesso/refresh
+        
+        Args:
+            code: O código de autorização retornado pelo Google
+            redirect_uri: A URI de redirecionamento registrada
+            
+        Returns:
+            Dicionário com tokens (access_token, refresh_token, etc)
+        """
+        token_url = "https://oauth2.googleapis.com/token"
+        data = {
+            "code": code,
+            "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+            "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code"
+        }
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(token_url, data=data)
+            return response.json()
         
     def get_credentials_from_token(self, token_info: Dict[str, Any]) -> Credentials:
         """Cria credenciais a partir do token"""
@@ -63,7 +89,7 @@ class GmailService:
         except HttpError as error:
             print(f'Erro ao buscar emails: {error}')
             return []
-    
+        
     def _parse_email_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """Parseia mensagem do Gmail"""
         headers = message['payload']['headers']
@@ -142,4 +168,4 @@ class GmailService:
             
         except HttpError as error:
             print(f'Erro ao buscar thread: {error}')
-            return [] 
+            return []

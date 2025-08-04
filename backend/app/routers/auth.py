@@ -6,9 +6,23 @@ import jwt
 from datetime import datetime, timedelta
 from app.core.config import settings
 from app.services.gmail_service import GmailService
+from fastapi import Request
+from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Request, HTTPException
+import os
+import httpx
+
+
+
 
 router = APIRouter()
 security = HTTPBearer()
+
+# Adicione estas constantes no topo do arquivo (ou crie um config.py)
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+GOOGLE_CLIENT_ID = os.getenv("349138754128-rug3moio7qlfq09cukl5hiie9rjr0ru9.apps.googleusercontent.com")
+GOOGLE_CLIENT_SECRET = os.getenv("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")
+
 
 class TokenRequest(BaseModel):
     access_token: str
@@ -103,6 +117,38 @@ async def get_current_user(token_data: Dict[str, Any] = Depends(verify_token)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao obter perfil: {str(e)}")
 
+        # Adicione esta nova rota ao seu router existente
+@router.get("/auth/callback", response_class=HTMLResponse)  # Corrigido para bater com o frontend
+async def google_auth_callback(request: Request, code: str):
+    try:
+        redirect_uri = f"{os.getenv('FRONTEND_ORIGIN')}/auth/callback"  # Corrigido
+        
+        # Use seu gmail_service para trocar o código por tokens
+        tokens = await gmail_service.exchange_code_for_tokens(code, redirect_uri)
+        
+        html_content = f"""
+        <script>
+            window.opener.postMessage({{
+                type: 'auth_success',
+                token: '{tokens["access_token"]}'
+            }}, '{os.getenv("FRONTEND_ORIGIN")}');
+            window.close();
+        </script>
+        """
+        return HTMLResponse(content=html_content)
+    
+    except Exception as e:
+        error_html = f"""
+        <script>
+            window.opener.postMessage({{
+                type: 'auth_error',
+                error: 'Falha na autenticação'
+            }}, '{os.getenv("FRONTEND_ORIGIN")}');
+            window.close();
+        </script>
+        """
+        return HTMLResponse(content=error_html, status_code=400)
+    
 @router.post("/refresh")
 async def refresh_token(token_data: Dict[str, Any] = Depends(verify_token)):
     """Renova token de acesso"""

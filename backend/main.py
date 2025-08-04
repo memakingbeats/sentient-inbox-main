@@ -28,6 +28,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+
+
 # Configurar CORS
 app.add_middleware(
     CORSMiddleware,
